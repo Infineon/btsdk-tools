@@ -239,6 +239,123 @@ def print_ss(hex_filename):
             break
 
 #
+# Sets the BDADDR of a static section of a hex file
+#
+def set_bdaddr(hex_filename, bdaddr):
+    hex_file = open(hex_filename, "r")
+    hex_lines = hex_file.readlines()
+    num_lines = len(hex_lines)
+    ss_bytes = ""
+    end_address = 0
+    found_bdaddr = False
+    ss_info = [] # Used to track SS # of lines and bytes per line
+    bda_line_num = 0
+    bdaddr_offset = 0
+
+    # check if read hex file
+    assert (num_lines != 0), "read_fw_ss_bytes: failed to read " + hex_filename
+
+    for line_num in range(0, num_lines):
+        # hex format start_code (1), byte count (1), address (2), record type (1), data (byte_count), checksum (1)
+        assert(hex_lines[line_num][0] == ':'), "read_fw_ss_bytes: hex file parse line " + str(line_num) + " no start code"
+
+        ss_info.append([])
+
+        byte_count  = int(hex_lines[line_num][1:3], 16)
+        address     = int(hex_lines[line_num][3:7], 16)
+        record_type = int(hex_lines[line_num][7:9], 16)
+
+        # print("read_fw_ss_bytes: byte count " + str(byte_count) + " addr " + str(address) + " type " + str(record_type))
+
+        if record_type == 4:
+            assert (byte_count == 2), "read_fw_ss_bytes: hex file illegal record_type 4 byte count " + byte_count
+
+            extended_addr = int(hex_lines[line_num][9:11], 16)
+            # print("read_fw_ss_bytes: extended address " + hex(extended_addr))
+            ss_info[line_num] = 0
+            continue
+
+        if (address >= ss_address_limit) or (end_address != address):
+            ss_info[line_num] = byte_count
+            break
+
+        assert (len(hex_lines[line_num]) == 2 * (byte_count + 6)), "read_fw_ss_bytes: hex file bad length " + str(2 * (byte_count + 6)) + " expected " + str(len(hex_lines[line_num]))
+
+        ss_bytes += hex_lines[line_num][9:9 + 2 * byte_count]
+        end_address = address + byte_count;
+        ss_info[line_num] = byte_count
+
+    # It is possible that this hex file already have application bytes.
+    # If true, remove them
+    if not is_20706:
+        ss_offset = 32
+        bdaddr_item_id = '00'
+        bdaddr_group_id = '03'
+    else:
+        ss_offset = 0
+        bdaddr_item_id = '40'
+        bdaddr_group_id = '00'
+
+    # Static section contains FW TLVs followed by App TLVs
+    # App TLVs always formatted as 20706
+    app_tlvs = False
+
+    if( ss_info[0] == 0 ):
+        bda_line_num = 1
+
+    while ss_offset < len(ss_bytes):
+        if is_20706 or app_tlvs:
+            # First byte is item Id then 2 bytes of length.
+            item_id  = ss_bytes[ss_offset:ss_offset+2];
+            group_id = '00'
+            length = int(ss_bytes[ss_offset+2:ss_offset+4], 16) + (256 * int(ss_bytes[ss_offset+4:ss_offset+6], 16))
+        else:
+            # First byte is item id, then 1 byte group Id, then 1 byte of length
+            item_id  = ss_bytes[ss_offset:ss_offset+2];
+            group_id = ss_bytes[ss_offset+2:ss_offset+4];
+            length = int(ss_bytes[ss_offset+4:ss_offset+6], 16)
+
+        # print("read_fw_ss_bytes: item " + item_id + " group " + group_id + " length " + str(length))
+
+        if (item_id == bdaddr_item_id) and (group_id == bdaddr_group_id) and (length == 6):
+            found_bdaddr = True
+            bdaddr_offset = (ss_offset - 2*sum(ss_info[:bda_line_num]) + 15 )
+            # print "Found BDADDR at line number %d at offset %d" % (bda_line_num, bdaddr_offset)
+            break
+
+        ss_offset += 2 * (3 + length)
+
+        if( ss_offset > 2*sum(ss_info[:bda_line_num+1]) ):
+            bda_line_num += 1
+
+
+        if (item_id == 'FE') and (group_id == '00'):
+            break
+
+    assert (found_bdaddr), "ERROR: Cannot find BDADDR Identifier in hex file"
+
+    # BDADDR is written to flash in little endian format
+    new_bda_flipped = new_bda[10:12] + new_bda[8:10] + new_bda[6:8] + new_bda[4:6] + new_bda[2:4] + new_bda[0:2]
+
+    # Cannot modify string characters directly, must use list
+    hex_line_list = list(hex_lines[bda_line_num])
+
+    # Write new BDADDR to line
+    for i in range(0,12):
+        hex_line_list[bdaddr_offset+i] = new_bda_flipped[i]
+
+    # Join characters into a single line to be written back to hex file, without the Checksum byte (will be calculated later)
+    hex_lines[bda_line_num] = "".join(hex_line_list[:-3])
+
+    # Add the Checksum byte
+    hex_lines[bda_line_num] = hex_lines[bda_line_num] + hex_line_checksum(hex_lines[bda_line_num]) + "\n"
+
+    hex_file_out = open(hex_filename, "w")
+    hex_file_out.writelines(hex_lines)
+
+    print "Done updating the BDADDR"
+
+#
 # Hex Line checksum
 #
 def hex_line_checksum(hex_line):
@@ -326,6 +443,7 @@ if len(sys.argv) < 2:
 
 is_20706 = False
 hex_present = False
+bdaddr_present = False
 json_present = False
 json_filename = ""
 num_app_tvs = 0
@@ -337,6 +455,11 @@ for arg in sys.argv[1:]:
     if arg == "-20706A2":
         is_20706 = True
         continue
+
+    if arg.find("-bda:") == 0:
+        new_bda = arg[5:]
+        assert (len(new_bda) == 12), "ERROR with bda length"
+        bdaddr_present = True
 
     if arg.find("-tv:") == 0:
         parse_tv(arg[4:])
@@ -354,9 +477,14 @@ for arg in sys.argv[1:]:
         json_present = True
 
 # If only hex file name present print the content of the static section of  the hex file
-if hex_present and not json_present and num_app_tvs == 0:
+if hex_present and not json_present and num_app_tvs == 0 and not bdaddr_present:
     print_ss(hex_filename)
     exit(0)
+
+# If hex file name present and -bda argument is given, update the BDADDR in the hex file
+if hex_present and bdaddr_present:
+    print "Updating BDADDR to " + new_bda + " in " + hex_filename
+    set_bdaddr(hex_filename, new_bda)
 
 # If only json file name present print the content of the JSON file
 if json_present and not hex_present and num_app_tvs == 0:
@@ -393,5 +521,6 @@ if hex_present and json_present:
     hex_merge(hex_filename, json_filename)
     exit(0)
 
-print("factory_config.py [hex file] [json file] [-tv:<name>:<type>:<value>] [-20706A2]")
-exit(1)
+if not bdaddr_present:
+    print("factory_config.py [hex file] [json file] [-tv:<name>:<type>:<value>] [-20706A2] [-bda:<value>]")
+    exit(1)
