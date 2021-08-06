@@ -353,7 +353,7 @@ def set_bdaddr(hex_filename, bdaddr):
     hex_file_out = open(hex_filename, "w")
     hex_file_out.writelines(hex_lines)
 
-    print "Done updating the BDADDR"
+    print ("Done updating the BDADDR")
 
 #
 # Hex Line checksum
@@ -483,7 +483,7 @@ if hex_present and not json_present and num_app_tvs == 0 and not bdaddr_present:
 
 # If hex file name present and -bda argument is given, update the BDADDR in the hex file
 if hex_present and bdaddr_present:
-    print "Updating BDADDR to " + new_bda + " in " + hex_filename
+    print ("Updating BDADDR to " + new_bda + " in " + hex_filename)
     set_bdaddr(hex_filename, new_bda)
 
 # If only json file name present print the content of the JSON file
