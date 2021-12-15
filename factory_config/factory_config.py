@@ -50,8 +50,8 @@ If only the JSON file is provided, the tool prints the hex TLV that would be gen
 
 If only one or several -tv structures are included, the tool prints the JSON file that would be generated
 
-If one or several -tv tripplets are included and JSON file is preovided, the tool creates the JSON file
-that inlcudes array of Name/Type/Value objects. For example
+If one or several -tv triplets are included and JSON file is provided, the tool creates the JSON file
+that includes array of Name/Type/Value objects. For example
     factory_config_json.py -tv:static_oob_data:e1:000102030405060708090a0b0c0d0e0f
 
 If HEX file and JSON file are included, the tool merges data from the JSON into the static section of the
