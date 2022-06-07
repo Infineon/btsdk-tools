@@ -1,5 +1,5 @@
 #
-# Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+# Copyright 2016-2022, Cypress Semiconductor Corporation (an Infineon company) or
 # an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
 #
 # This software, including source code, documentation and related
@@ -42,7 +42,7 @@ Usage factory_config.py [hex file] [json file] [-tv:<name>:<type>:<value>] [-207
 
 If only hex file name is provided, the tool prints the TLVs in the SS section.
 Note that the -20706A2 flag is necessary to tell the tool to use the 20706 style of TLV,
-otherwise it defaults to the TLV style used for 20735B1, 20739B2, 20819A1, or 43012C0...
+otherwise it defaults to the TLV style used for newer devices like 20735B1, 20819A1, 30739A0, or 43012C0...
 If hex file already contains application TLVs the printout will display both original
 and application TLVs.
 
